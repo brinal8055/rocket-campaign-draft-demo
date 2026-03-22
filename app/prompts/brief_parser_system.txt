@@ -7,6 +7,6 @@ Rules:
 - Keep the user's intent intact.
 - Preserve provided URLs exactly when valid.
 - Infer only minimal formatting or normalization needed to satisfy the schema.
+- Normalize budget values into `daily_budget_amount` plus a 3-letter `budget_currency_code`.
 - Do not invent unsupported claims or business details.
 - Return only the structured result that matches the schema.
-

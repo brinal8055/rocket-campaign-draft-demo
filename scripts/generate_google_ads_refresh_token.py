@@ -72,13 +72,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     result = {
-        "client_id": credentials.client_id,
-        "client_secret": credentials.client_secret,
         "refresh_token": credentials.refresh_token,
         "scopes": list(credentials.scopes or []),
         "token_uri": credentials.token_uri,
     }
 
+    print(
+        "Authorization complete. Copy the refresh token below into GOOGLE_ADS_REFRESH_TOKEN "
+        "and do not share this output.",
+        file=sys.stderr,
+    )
     print(json.dumps(result, indent=2))
     return 0
 

@@ -26,6 +26,13 @@ class PipelineStageName(str, Enum):
 class PipelineStageStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class DemoRunStatus(str, Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 class StagePreview(BaseModel):
@@ -65,3 +72,20 @@ class DemoRunResult(BaseModel):
     approval_payload: dict[str, Any]
     artifact_path: str = Field(min_length=1)
     stages: list[StageExecutionResult] = Field(min_length=1)
+
+
+class DemoRunArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    app_name: Literal["rocket-campaign-draft-demo"] = "rocket-campaign-draft-demo"
+    environment: str = Field(min_length=1)
+    artifact_path: str = Field(min_length=1)
+    run_status: DemoRunStatus
+    stages: list[StageExecutionResult] = Field(min_length=1)
+    brief: BriefInput | None = None
+    campaign_plan: CampaignPlan | None = None
+    rsa_variants: list[ResponsiveSearchAdVariant] = Field(default_factory=list)
+    draft_creation_result: DraftCreationResult | None = None
+    partial_draft_state: dict[str, Any] | None = None
+    approval_payload: dict[str, Any] | None = None
+    error_message: str | None = None

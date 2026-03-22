@@ -8,6 +8,6 @@ Rules:
 - Use channel "google_search".
 - Set UTM defaults to source "google" and medium "cpc".
 - Keep geo_targets aligned with the brief geo list.
-- recommended_daily_budget_usd should reflect the brief's daily budget unless there is a strong reason to adjust slightly.
+- recommended_daily_budget_amount should reflect the brief's daily budget unless there is a strong reason to adjust slightly.
+- budget_currency_code must exactly match the brief budget_currency_code.
 - Return only the structured result that matches the schema.
-

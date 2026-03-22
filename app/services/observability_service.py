@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from app.utils import AppSettings
+from app.utils import AppSettings, set_sensitive_observability
 
 
 @dataclass(slots=True)
@@ -14,6 +14,7 @@ class ObservabilityService:
     project: str | None = None
     tracing_enabled: bool = True
     workspace_id: str | None = None
+    allow_sensitive_observability: bool = False
 
     @classmethod
     def from_settings(cls, settings: AppSettings) -> ObservabilityService:
@@ -22,9 +23,12 @@ class ObservabilityService:
             project=settings.langsmith_project,
             tracing_enabled=settings.langsmith_tracing,
             workspace_id=settings.langsmith_workspace_id,
+            allow_sensitive_observability=settings.allow_sensitive_observability,
         )
 
     def configure(self) -> None:
+        set_sensitive_observability(self.allow_sensitive_observability)
+
         if not self.tracing_enabled or not self.api_key or not self.project:
             return
 

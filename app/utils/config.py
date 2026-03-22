@@ -28,6 +28,7 @@ class AppSettings(BaseSettings):
     langsmith_project: str = "rocket-campaign-draft-demo"
     langsmith_tracing: bool = True
     langsmith_workspace_id: str | None = None
+    allow_sensitive_observability: bool = False
     google_ads_developer_token: SecretStr
     google_ads_client_id: str
     google_ads_client_secret: SecretStr
@@ -36,6 +37,8 @@ class AppSettings(BaseSettings):
     google_ads_login_customer_id: str | None = None
     google_ads_use_test_account: bool = True
     n8n_approval_webhook_url: AnyHttpUrl
+    n8n_approval_webhook_secret: SecretStr | None = None
+    n8n_approval_webhook_secret_header: str = "X-Rocket-Webhook-Secret"
 
     @field_validator("google_ads_customer_id", "google_ads_login_customer_id")
     @classmethod
@@ -47,6 +50,13 @@ class AppSettings(BaseSettings):
         if not digits_only.isdigit():
             raise ValueError("must contain only digits and optional hyphens")
         return digits_only
+
+    @field_validator("n8n_approval_webhook_secret_header")
+    @classmethod
+    def validate_n8n_secret_header(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be empty")
+        return value
 
 
 def load_settings(env_file: str | Path | None = None) -> AppSettings:

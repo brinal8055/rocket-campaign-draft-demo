@@ -8,6 +8,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.orchestration.flow import DemoFlowError, RocketDemoFlow
+from app.services.n8n_service import N8NServiceError
 from app.schemas import BriefInput, CampaignPlan, DraftCreationResult, ResponsiveSearchAdVariant
 from app.utils import AppSettings
 
@@ -39,7 +40,8 @@ def build_brief() -> BriefInput:
         goal="demo_bookings",
         audience="Growth leads at B2B SaaS companies",
         geo=["US"],
-        daily_budget_usd=150.0,
+        daily_budget_amount=150.0,
+        budget_currency_code="USD",
         landing_page_url="https://example.com/demo",
         tone="Direct and credible",
         brand_notes="Avoid hype and keep it specific.",
@@ -54,7 +56,8 @@ def build_campaign_plan() -> CampaignPlan:
         messaging_angles=["Launch faster", "Keep approval in the loop"],
         utm_campaign="rocket_demo_bookings_us_search",
         geo_targets=["United States"],
-        recommended_daily_budget_usd=150.0,
+        recommended_daily_budget_amount=150.0,
+        budget_currency_code="USD",
     )
 
 
@@ -151,6 +154,7 @@ def test_flow_runs_end_to_end_and_saves_artifact(tmp_path: Path) -> None:
     assert artifact_path.exists()
 
     saved_payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert saved_payload["run_status"] == "COMPLETED"
     assert saved_payload["draft_creation_result"]["campaign_status"] == "PAUSED"
     assert saved_payload["approval_payload"]["customer_id"] == "1234567890"
     assert [stage["name"] for stage in saved_payload["stages"]] == [
@@ -198,3 +202,72 @@ def test_flow_rejects_variant_final_url_that_does_not_match_brief() -> None:
         match="RSA variant 1 final_url must match the validated brief landing_page_url",
     ):
         flow.run(raw_brief={"offer": "AI campaign drafting"})
+
+
+def test_flow_rejects_budget_currency_mismatch_between_brief_and_plan() -> None:
+    flow = RocketDemoFlow(
+        settings=build_settings(),
+        brief_parser=FakeBriefParser(response=build_brief()),
+        strategy_composer=FakeStrategyComposer(
+            response=build_campaign_plan().model_copy(update={"budget_currency_code": "INR"})
+        ),
+        rsa_copy_generator=FakeRSACopyGenerator(response=build_rsa_variants()),
+        google_ads_service=FakeGoogleAdsService(
+            response=DraftCreationResult(
+                campaign_resource_name="customers/123/campaigns/456",
+                campaign_status="PAUSED",
+                ad_group_resource_name="customers/123/adGroups/789",
+                keyword_count=2,
+                geo_target_count=1,
+                approval_status="PENDING",
+            )
+        ),
+        n8n_service=FakeN8NService(),
+    )
+
+    with pytest.raises(
+        DemoFlowError,
+        match="Campaign plan budget_currency_code must match the validated brief budget_currency_code",
+    ):
+        flow.run(raw_brief={"offer": "AI campaign drafting"})
+
+
+def test_flow_saves_failed_artifact_with_google_ads_result_when_approval_fails(tmp_path: Path) -> None:
+    class FailingN8NService(FakeN8NService):
+        def send_campaign_draft_for_approval(self, **kwargs):
+            raise N8NServiceError("approval webhook down")
+
+    artifact_path = tmp_path / "artifacts" / "last_run.json"
+    draft_result = DraftCreationResult(
+        campaign_resource_name="customers/123/campaigns/456",
+        campaign_status="PAUSED",
+        ad_group_resource_name="customers/123/adGroups/789",
+        campaign_budget_resource_name="customers/123/campaignBudgets/111",
+        keyword_count=2,
+        geo_target_count=1,
+        approval_status="PENDING",
+        keyword_resource_names=["kw1", "kw2"],
+        geo_target_resource_names=["geo1"],
+        account_currency_code="USD",
+    )
+    flow = RocketDemoFlow(
+        settings=build_settings(),
+        brief_parser=FakeBriefParser(response=build_brief()),
+        strategy_composer=FakeStrategyComposer(response=build_campaign_plan()),
+        rsa_copy_generator=FakeRSACopyGenerator(response=build_rsa_variants()),
+        google_ads_service=FakeGoogleAdsService(response=draft_result),
+        n8n_service=FailingN8NService(),
+    )
+
+    with pytest.raises(N8NServiceError, match="approval webhook down"):
+        flow.run(
+            raw_brief={"offer": "AI campaign drafting"},
+            artifact_path=artifact_path,
+        )
+
+    saved_payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert saved_payload["run_status"] == "FAILED"
+    assert saved_payload["draft_creation_result"]["campaign_resource_name"] == "customers/123/campaigns/456"
+    assert saved_payload["error_message"] == "approval webhook down"
+    assert saved_payload["stages"][-1]["name"] == "approval_request"
+    assert saved_payload["stages"][-1]["status"] == "FAILED"

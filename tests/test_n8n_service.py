@@ -33,6 +33,7 @@ def build_settings() -> AppSettings:
         google_ads_customer_id="1234567890",
         google_ads_use_test_account=True,
         n8n_approval_webhook_url="https://example.com/webhook/approval",
+        n8n_approval_webhook_secret=SecretStr("shared-secret"),
     )
 
 
@@ -65,6 +66,8 @@ def test_from_settings_uses_webhook_url() -> None:
     service = N8NService.from_settings(build_settings())
 
     assert service.webhook_url == "https://example.com/webhook/approval"
+    assert service.webhook_secret == "shared-secret"
+    assert service.webhook_secret_header == "X-Rocket-Webhook-Secret"
 
 
 def test_build_campaign_draft_payload_contains_required_fields() -> None:
@@ -77,6 +80,7 @@ def test_build_campaign_draft_payload_contains_required_fields() -> None:
         campaign_status="PAUSED",
         landing_page_url="https://example.com/demo",
         daily_budget=150.0,
+        daily_budget_currency="USD",
         keyword_themes=["ai performance marketing", "startup demo booking ads"],
         ad_variants=build_ad_variants(),
     )
@@ -88,6 +92,7 @@ def test_build_campaign_draft_payload_contains_required_fields() -> None:
         "campaign_status": "PAUSED",
         "landing_page_url": "https://example.com/demo",
         "daily_budget": 150.0,
+        "daily_budget_currency": "USD",
         "keyword_themes": ["ai performance marketing", "startup demo booking ads"],
         "ad_copy_summary": (
             "V1: H=Book More Demos / Launch Faster / Keep Spend Controlled; "
@@ -110,6 +115,7 @@ def test_request_approval_posts_json_payload() -> None:
 
     service = N8NService(
         webhook_url="https://example.com/webhook/approval",
+        webhook_secret="shared-secret",
         request_sender=fake_sender,
     )
 
@@ -118,6 +124,7 @@ def test_request_approval_posts_json_payload() -> None:
     assert sent["url"] == "https://example.com/webhook/approval"
     assert sent["timeout"] == 10.0
     assert sent["headers"]["Content-type"] == "application/json"
+    assert sent["headers"]["X-rocket-webhook-secret"] == "shared-secret"
     assert sent["body"] == '{"campaign_name": "Rocket Demo Campaign"}'
 
 
