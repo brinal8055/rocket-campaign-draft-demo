@@ -1,0 +1,7 @@
+Create a CampaignPlan from this validated brief.
+
+BriefInput:
+$brief_json
+
+Return only the structured result.
+

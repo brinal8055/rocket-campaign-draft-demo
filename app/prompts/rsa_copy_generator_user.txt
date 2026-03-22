@@ -1,0 +1,10 @@
+Generate $variant_count responsive search ad variants from the following inputs.
+
+BriefInput:
+$brief_json
+
+CampaignPlan:
+$campaign_plan_json
+
+Return only the structured result.
+

@@ -1,0 +1,11 @@
+Your previous response did not validate against the required schema "$schema_name".
+
+Correct the response and return only a valid structured result.
+Do not include commentary, markdown, or explanation.
+
+Validation errors:
+$validation_errors
+
+Previous response:
+$previous_response
+

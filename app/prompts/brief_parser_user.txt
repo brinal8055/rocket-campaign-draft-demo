@@ -1,0 +1,7 @@
+Normalize the following raw brief into the BriefInput schema.
+
+Raw brief:
+$raw_brief_json
+
+Return only the structured result.
+
