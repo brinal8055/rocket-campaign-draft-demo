@@ -98,7 +98,10 @@ def render_run_summary(console: Console, result_json: dict[str, Any]) -> None:
     brief_table.add_row("Goal", str(brief["goal"]))
     brief_table.add_row("Audience", str(brief["audience"]))
     brief_table.add_row("Geo", ", ".join(brief["geo"]))
-    brief_table.add_row("Daily Budget", f"${brief['daily_budget_usd']:.2f}")
+    brief_table.add_row(
+        "Daily Budget",
+        f"{brief['daily_budget_amount']:.2f} {brief['budget_currency_code']}",
+    )
     brief_table.add_row("Landing Page", str(brief["landing_page_url"]))
     console.print(brief_table)
 
@@ -110,6 +113,10 @@ def render_run_summary(console: Console, result_json: dict[str, Any]) -> None:
     plan_table.add_row("Messaging Angles", ", ".join(plan["messaging_angles"]))
     plan_table.add_row("Geo Targets", ", ".join(plan["geo_targets"]))
     plan_table.add_row("UTM Campaign", str(plan["utm_campaign"]))
+    plan_table.add_row(
+        "Recommended Budget",
+        f"{plan['recommended_daily_budget_amount']:.2f} {plan['budget_currency_code']}",
+    )
     console.print(plan_table)
 
     rsa_table = Table(title="RSA Variants")
@@ -171,7 +178,14 @@ def main(argv: list[str] | None = None) -> int:
         OpenAIResponseError,
         ValueError,
     ) as exc:
-        console.print(f"[bold red]Demo flow failed[/bold red]\n{exc}")
+        artifact_path = Path(args.artifact_path)
+        if artifact_path.exists():
+            console.print(
+                f"[bold red]Demo flow failed[/bold red]\n{exc}\n\n"
+                f"Checkpoint saved to [bold]{artifact_path}[/bold]."
+            )
+        else:
+            console.print(f"[bold red]Demo flow failed[/bold red]\n{exc}")
         return 1
 
     result_json = result.model_dump(mode="json")

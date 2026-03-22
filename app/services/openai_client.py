@@ -8,10 +8,47 @@ from typing import Any, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.prompts import render_prompt
-from app.utils import AppSettings, traceable, wrap_openai_client
+from app.utils import (
+    AppSettings,
+    sensitive_observability_enabled,
+    set_sensitive_observability,
+    traceable,
+    wrap_openai_client,
+)
 
 LOGGER = logging.getLogger(__name__)
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+
+def _sanitize_openai_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    if sensitive_observability_enabled():
+        return inputs
+
+    self_obj = inputs.get("self")
+    return {
+        "model": inputs.get("model"),
+        "use_lightweight_model": inputs.get("use_lightweight_model", False),
+        "response_model": getattr(inputs.get("response_model"), "__name__", "<unknown>"),
+        "system_prompt": "<redacted>",
+        "user_prompt": "<redacted>",
+        "client_defaults": {
+            "strategy_model": getattr(self_obj, "strategy_model", None),
+            "transform_model": getattr(self_obj, "transform_model", None),
+            "timeout_seconds": getattr(self_obj, "timeout_seconds", None),
+        },
+    }
+
+
+def _sanitize_openai_trace_outputs(output: Any) -> Any:
+    if sensitive_observability_enabled():
+        return output
+
+    if isinstance(output, BaseModel):
+        return {
+            "model_name": type(output).__name__,
+            "field_names": sorted(output.model_dump(mode="python").keys()),
+        }
+    return {"type": type(output).__name__}
 
 
 class OpenAIResponseError(RuntimeError):
@@ -28,6 +65,7 @@ class OpenAIResponsesClient:
     langsmith_project: str = "rocket-campaign-draft-demo"
     langsmith_tracing: bool = True
     langsmith_workspace_id: str | None = None
+    allow_sensitive_observability: bool = False
     sdk_client: Any | None = field(default=None, repr=False)
 
     @classmethod
@@ -41,9 +79,16 @@ class OpenAIResponsesClient:
             langsmith_project=settings.langsmith_project,
             langsmith_tracing=settings.langsmith_tracing,
             langsmith_workspace_id=settings.langsmith_workspace_id,
+            allow_sensitive_observability=settings.allow_sensitive_observability,
         )
 
-    @traceable(run_type="llm", name="openai_generate_structured")
+    @traceable(
+        run_type="llm",
+        name="openai_generate_structured",
+        process_inputs=_sanitize_openai_trace_inputs,
+        process_outputs=_sanitize_openai_trace_outputs,
+        exceptions_to_handle=(OpenAIResponseError,),
+    )
     def generate_structured(
         self,
         *,
@@ -112,13 +157,16 @@ class OpenAIResponsesClient:
                 "The installed OpenAI SDK does not support responses.create()."
             )
 
-        return responses_api.create(
-            model=model,
-            input=input_messages,
-            text={
-                "format": self._build_text_format(response_model),
-            },
-        )
+        try:
+            return responses_api.create(
+                model=model,
+                input=input_messages,
+                text={
+                    "format": self._build_text_format(response_model),
+                },
+            )
+        except Exception as exc:
+            raise OpenAIResponseError(f"OpenAI Responses API request failed: {exc}") from exc
 
     def _get_sdk_client(self) -> Any:
         if self.sdk_client is not None:
@@ -170,7 +218,7 @@ class OpenAIResponsesClient:
             return str(output)
 
     def _log_raw_response(self, model: str, raw_response: str) -> None:
-        if LOGGER.isEnabledFor(logging.DEBUG):
+        if LOGGER.isEnabledFor(logging.DEBUG) and self.allow_sensitive_observability:
             LOGGER.debug("Raw model response for %s:%s%s", model, "\n", raw_response or "<empty>")
 
     def _select_model(self, use_lightweight_model: bool) -> str:
@@ -193,6 +241,7 @@ class OpenAIResponsesClient:
         return json.dumps(exc.errors(), indent=2)
 
     def _configure_langsmith_environment(self) -> None:
+        set_sensitive_observability(self.allow_sensitive_observability)
         if not self.langsmith_tracing or not self.langsmith_api_key or not self.langsmith_project:
             return
 

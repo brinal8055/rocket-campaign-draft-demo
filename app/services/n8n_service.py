@@ -9,11 +9,43 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.schemas import ResponsiveSearchAdVariant
-from app.utils import AppSettings, traceable
+from app.utils import AppSettings, mask_identifier, sensitive_observability_enabled, traceable
 
 LOGGER = logging.getLogger(__name__)
 
 TRANSIENT_HTTP_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+
+def _sanitize_n8n_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    if sensitive_observability_enabled():
+        return inputs
+
+    ad_variants = inputs.get("ad_variants") or []
+    return {
+        "campaign_name": inputs.get("campaign_name"),
+        "customer_id": mask_identifier(str(inputs.get("customer_id", ""))),
+        "campaign_status": inputs.get("campaign_status"),
+        "daily_budget": inputs.get("daily_budget"),
+        "daily_budget_currency": inputs.get("daily_budget_currency"),
+        "keyword_theme_count": len(inputs.get("keyword_themes") or []),
+        "ad_variant_count": len(ad_variants),
+        "landing_page_url": "<redacted>",
+    }
+
+
+def _sanitize_n8n_trace_outputs(output: Any) -> Any:
+    if sensitive_observability_enabled():
+        return output
+
+    if isinstance(output, dict):
+        return {
+            "campaign_name": output.get("campaign_name"),
+            "customer_id": mask_identifier(str(output.get("customer_id", ""))),
+            "campaign_status": output.get("campaign_status"),
+            "daily_budget": output.get("daily_budget"),
+            "daily_budget_currency": output.get("daily_budget_currency"),
+        }
+    return output
 
 
 class RequestSender(Protocol):
@@ -29,15 +61,30 @@ class N8NService:
     """Send approval requests to an n8n webhook."""
 
     webhook_url: str | None = None
+    webhook_secret: str | None = None
+    webhook_secret_header: str = "X-Rocket-Webhook-Secret"
     timeout_seconds: float = 10.0
     max_attempts: int = 2
     request_sender: RequestSender = field(default=urlopen, repr=False)
 
     @classmethod
     def from_settings(cls, settings: AppSettings) -> N8NService:
-        return cls(webhook_url=str(settings.n8n_approval_webhook_url))
+        return cls(
+            webhook_url=str(settings.n8n_approval_webhook_url),
+            webhook_secret=(
+                settings.n8n_approval_webhook_secret.get_secret_value()
+                if settings.n8n_approval_webhook_secret is not None
+                else None
+            ),
+            webhook_secret_header=settings.n8n_approval_webhook_secret_header,
+        )
 
-    @traceable(run_type="tool", name="n8n_approval_request")
+    @traceable(
+        run_type="tool",
+        name="n8n_approval_request",
+        process_inputs=_sanitize_n8n_trace_inputs,
+        process_outputs=_sanitize_n8n_trace_outputs,
+    )
     def send_campaign_draft_for_approval(
         self,
         *,
@@ -47,6 +94,7 @@ class N8NService:
         campaign_status: str,
         landing_page_url: str,
         daily_budget: float,
+        daily_budget_currency: str,
         keyword_themes: list[str],
         ad_variants: list[ResponsiveSearchAdVariant],
     ) -> dict[str, Any]:
@@ -57,6 +105,7 @@ class N8NService:
             campaign_status=campaign_status,
             landing_page_url=landing_page_url,
             daily_budget=daily_budget,
+            daily_budget_currency=daily_budget_currency,
             keyword_themes=keyword_themes,
             ad_variants=ad_variants,
         )
@@ -72,6 +121,7 @@ class N8NService:
         campaign_status: str,
         landing_page_url: str,
         daily_budget: float,
+        daily_budget_currency: str,
         keyword_themes: list[str],
         ad_variants: list[ResponsiveSearchAdVariant],
     ) -> dict[str, Any]:
@@ -87,18 +137,23 @@ class N8NService:
             "campaign_status": campaign_status,
             "landing_page_url": landing_page_url,
             "daily_budget": daily_budget,
+            "daily_budget_currency": daily_budget_currency,
             "keyword_themes": keyword_themes,
             "ad_copy_summary": self._build_ad_copy_summary(ad_variants),
         }
 
     def request_approval(self, payload: dict[str, Any]) -> None:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if self.webhook_secret:
+            headers[self.webhook_secret_header] = self.webhook_secret
+
         request = Request(
             url=self._require_webhook_url(),
             data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
 
@@ -106,7 +161,10 @@ class N8NService:
             try:
                 response = self.request_sender(request, timeout=self.timeout_seconds)
                 self._validate_response(response)
-                LOGGER.info("Sent approval request to n8n for campaign '%s'.", payload["campaign_name"])
+                if sensitive_observability_enabled():
+                    LOGGER.info("Sent approval request to n8n for campaign '%s'.", payload["campaign_name"])
+                else:
+                    LOGGER.info("Sent approval request to n8n.")
                 return
             except HTTPError as exc:
                 if self._is_transient_status(exc.code) and attempt < self.max_attempts:

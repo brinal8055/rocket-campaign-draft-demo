@@ -1,4 +1,4 @@
-"""Service scaffolds for external integrations."""
+"""Service adapters for external integrations."""
 
 from app.services.approval_service import ApprovalService
 from app.services.google_ads_service import GoogleAdsService

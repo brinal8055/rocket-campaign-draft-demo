@@ -33,20 +33,23 @@ class FakeResponse:
 
 
 class FakeResponsesAPI:
-    def __init__(self, queued_responses: list[FakeResponse]) -> None:
+    def __init__(self, queued_responses: list[FakeResponse], *, error: Exception | None = None) -> None:
         self._queued_responses = list(queued_responses)
+        self._error = error
         self.calls: list[dict[str, object]] = []
 
     def create(self, **kwargs: object) -> FakeResponse:
         self.calls.append(kwargs)
+        if self._error is not None:
+            raise self._error
         if not self._queued_responses:
             raise AssertionError("No fake responses left to return.")
         return self._queued_responses.pop(0)
 
 
 class FakeSDKClient:
-    def __init__(self, queued_responses: list[FakeResponse]) -> None:
-        self.responses = FakeResponsesAPI(queued_responses)
+    def __init__(self, queued_responses: list[FakeResponse], *, error: Exception | None = None) -> None:
+        self.responses = FakeResponsesAPI(queued_responses, error=error)
 
 
 class RecordingOpenAIClient:
@@ -66,7 +69,8 @@ def build_brief_input() -> BriefInput:
         goal="demo_bookings",
         audience="Growth leads at B2B SaaS companies",
         geo=["US"],
-        daily_budget_usd=150.0,
+        daily_budget_amount=150.0,
+        budget_currency_code="USD",
         landing_page_url="https://example.com/demo",
         tone="Direct and credible",
         brand_notes="Avoid hype and keep it specific.",
@@ -81,7 +85,8 @@ def build_campaign_plan() -> CampaignPlan:
         messaging_angles=["Launch faster", "Keep approval in the loop"],
         utm_campaign="rocket_demo_bookings_us_search",
         geo_targets=["US"],
-        recommended_daily_budget_usd=150.0,
+        recommended_daily_budget_amount=150.0,
+        budget_currency_code="USD",
     )
 
 
@@ -195,7 +200,11 @@ def test_generate_structured_logs_raw_response_only_in_debug_mode(caplog: pytest
     debug_sdk_client = FakeSDKClient(
         [FakeResponse(output_parsed=ExampleResponse(value="debug"), output_text='{"value":"debug"}')]
     )
-    debug_client = OpenAIResponsesClient(api_key="test-key", sdk_client=debug_sdk_client)
+    debug_client = OpenAIResponsesClient(
+        api_key="test-key",
+        sdk_client=debug_sdk_client,
+        allow_sensitive_observability=True,
+    )
     caplog.clear()
     caplog.set_level(logging.DEBUG, logger="app.services.openai_client")
     debug_client.generate_structured(
@@ -204,6 +213,20 @@ def test_generate_structured_logs_raw_response_only_in_debug_mode(caplog: pytest
         response_model=ExampleResponse,
     )
     assert "Raw model response for gpt-5.4" in caplog.text
+
+
+def test_generate_structured_wraps_sdk_errors_in_clean_exception() -> None:
+    client = OpenAIResponsesClient(
+        api_key="test-key",
+        sdk_client=FakeSDKClient([], error=RuntimeError("gateway timeout")),
+    )
+
+    with pytest.raises(OpenAIResponseError, match="OpenAI Responses API request failed: gateway timeout"):
+        client.generate_structured(
+            system_prompt="system",
+            user_prompt="user",
+            response_model=ExampleResponse,
+        )
 
 
 def test_brief_parser_uses_lightweight_model_and_returns_typed_schema() -> None:

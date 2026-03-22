@@ -18,7 +18,8 @@ def build_valid_brief_input(**overrides: object) -> dict[str, object]:
         "goal": "demo_bookings",
         "audience": "Growth leads at B2B SaaS startups",
         "geo": ["US"],
-        "daily_budget_usd": 150.0,
+        "daily_budget_amount": 150.0,
+        "budget_currency_code": "USD",
         "landing_page_url": "https://example.com/demo",
         "tone": "Direct and credible",
         "brand_notes": "Avoid hype and keep claims grounded.",
@@ -35,7 +36,8 @@ def build_valid_campaign_plan(**overrides: object) -> dict[str, object]:
         "messaging_angles": ["Launch faster", "Keep ads paused until approval"],
         "utm_campaign": "rocket_demo_bookings_us_search",
         "geo_targets": ["US"],
-        "recommended_daily_budget_usd": 150.0,
+        "recommended_daily_budget_amount": 150.0,
+        "budget_currency_code": "USD",
     }
     payload.update(overrides)
     return payload
@@ -73,14 +75,31 @@ def test_brief_input_accepts_valid_payload() -> None:
     brief = BriefInput(**build_valid_brief_input())
 
     assert brief.geo == ["US"]
-    assert brief.daily_budget_usd == 150.0
+    assert brief.daily_budget_amount == 150.0
+    assert brief.budget_currency_code == "USD"
 
 
 def test_campaign_plan_accepts_valid_payload() -> None:
     plan = CampaignPlan(**build_valid_campaign_plan())
 
     assert plan.geo_targets == ["US"]
-    assert plan.recommended_daily_budget_usd == 150.0
+    assert plan.recommended_daily_budget_amount == 150.0
+    assert plan.budget_currency_code == "USD"
+
+
+def test_budget_fields_accept_legacy_usd_aliases() -> None:
+    brief_payload = build_valid_brief_input()
+    brief_payload.pop("daily_budget_amount")
+    brief_payload["daily_budget_usd"] = 150.0
+    plan_payload = build_valid_campaign_plan()
+    plan_payload.pop("recommended_daily_budget_amount")
+    plan_payload["recommended_daily_budget_usd"] = 150.0
+
+    brief = BriefInput(**brief_payload)
+    plan = CampaignPlan(**plan_payload)
+
+    assert brief.daily_budget_amount == 150.0
+    assert plan.recommended_daily_budget_amount == 150.0
 
 
 @pytest.mark.parametrize("geo_value", [[], ["  "]])
@@ -97,14 +116,26 @@ def test_campaign_plan_rejects_empty_geo_targets(geo_targets_value: list[str]) -
 
 @pytest.mark.parametrize("budget_value", [0, -1, -10.5])
 def test_brief_input_rejects_non_positive_daily_budget(budget_value: float) -> None:
-    with pytest.raises(ValidationError, match="daily_budget_usd"):
-        BriefInput(**build_valid_brief_input(daily_budget_usd=budget_value))
+    with pytest.raises(ValidationError, match="daily_budget_amount"):
+        BriefInput(**build_valid_brief_input(daily_budget_amount=budget_value))
 
 
 @pytest.mark.parametrize("budget_value", [0, -1, -10.5])
 def test_campaign_plan_rejects_non_positive_recommended_budget(budget_value: float) -> None:
-    with pytest.raises(ValidationError, match="recommended_daily_budget_usd"):
-        CampaignPlan(**build_valid_campaign_plan(recommended_daily_budget_usd=budget_value))
+    with pytest.raises(ValidationError, match="recommended_daily_budget_amount"):
+        CampaignPlan(**build_valid_campaign_plan(recommended_daily_budget_amount=budget_value))
+
+
+@pytest.mark.parametrize("currency_code", ["", "us", "US1", "USDT"])
+def test_brief_input_rejects_invalid_budget_currency_code(currency_code: str) -> None:
+    with pytest.raises(ValidationError, match="budget_currency_code"):
+        BriefInput(**build_valid_brief_input(budget_currency_code=currency_code))
+
+
+@pytest.mark.parametrize("currency_code", ["", "in", "12A", "INDI"])
+def test_campaign_plan_rejects_invalid_budget_currency_code(currency_code: str) -> None:
+    with pytest.raises(ValidationError, match="budget_currency_code"):
+        CampaignPlan(**build_valid_campaign_plan(budget_currency_code=currency_code))
 
 
 def test_responsive_search_ad_variant_accepts_minimum_required_assets() -> None:
@@ -175,3 +206,19 @@ def test_draft_creation_result_accepts_valid_payload() -> None:
 def test_draft_creation_result_requires_paused_status() -> None:
     with pytest.raises(ValidationError, match="campaign_status"):
         DraftCreationResult(**build_valid_draft_creation_result(campaign_status="ENABLED"))
+
+
+def test_draft_creation_result_accepts_optional_resource_details() -> None:
+    result = DraftCreationResult(
+        **build_valid_draft_creation_result(
+            campaign_budget_resource_name="customers/123/campaignBudgets/111",
+            ad_group_ad_resource_name="customers/123/adGroupAds/444",
+            keyword_resource_names=["kw1", "kw2"],
+            geo_target_resource_names=["geo1"],
+            account_currency_code="INR",
+        )
+    )
+
+    assert result.campaign_budget_resource_name == "customers/123/campaignBudgets/111"
+    assert result.ad_group_ad_resource_name == "customers/123/adGroupAds/444"
+    assert result.account_currency_code == "INR"

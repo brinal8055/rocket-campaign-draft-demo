@@ -7,7 +7,9 @@ from app.schemas.campaign import (
     ResponsiveSearchAdVariant,
 )
 from app.schemas.runtime import (
+    DemoRunArtifact,
     DemoRunResult,
+    DemoRunStatus,
     DemoScaffoldSummary,
     PipelineStageName,
     PipelineStageStatus,
@@ -18,7 +20,9 @@ from app.schemas.runtime import (
 __all__ = [
     "BriefInput",
     "CampaignPlan",
+    "DemoRunArtifact",
     "DemoRunResult",
+    "DemoRunStatus",
     "DemoScaffoldSummary",
     "DraftCreationResult",
     "PipelineStageName",
