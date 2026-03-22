@@ -68,3 +68,6 @@ This keeps integration issues visible before we add real execution logic.
 4. Send approval payloads to n8n.
 5. Add LangSmith tracing around the full run.
 
+
+This created a real campaign draft in Google Ads. Nothing can spend until a human approves it.
+That is the prototype. Thank you.
