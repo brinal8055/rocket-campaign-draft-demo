@@ -56,7 +56,9 @@ The flow writes checkpoints as it progresses. If a downstream step fails after G
 
 ## Required Configuration
 
-Required keys are listed in [.env.example](/Users/brinalsavsaviya/Documents/Code/AI/Agents/rocket-campaign-draft-demo/.env.example). Important settings:
+Required keys are listed in [.env.example](.env.example).
+
+Important settings:
 
 - `GOOGLE_ADS_USE_TEST_ACCOUNT=true` enforces that the configured customer must be a Google Ads test account before the flow will mutate anything.
 - `N8N_APPROVAL_WEBHOOK_SECRET` is optional but recommended. If set, the app sends it using `N8N_APPROVAL_WEBHOOK_SECRET_HEADER`.
@@ -73,9 +75,9 @@ For backward-compatible input parsing, the app still accepts legacy JSON keys li
 
 ## Scripts
 
-- [scripts/run_demo.py](/Users/brinalsavsaviya/Documents/Code/AI/Agents/rocket-campaign-draft-demo/scripts/run_demo.py): run the full demo flow.
-- [scripts/google_ads_smoke_test.py](/Users/brinalsavsaviya/Documents/Code/AI/Agents/rocket-campaign-draft-demo/scripts/google_ads_smoke_test.py): validate Google Ads auth and print account metadata without mutating anything.
-- [scripts/generate_google_ads_refresh_token.py](/Users/brinalsavsaviya/Documents/Code/AI/Agents/rocket-campaign-draft-demo/scripts/generate_google_ads_refresh_token.py): generate a refresh token from an installed-app OAuth client JSON.
+- [scripts/run_demo.py](scripts/run_demo.py): run the full demo flow.
+- [scripts/google_ads_smoke_test.py](scripts/google_ads_smoke_test.py): validate Google Ads auth and print account metadata without mutating anything.
+- [scripts/generate_google_ads_refresh_token.py](scripts/generate_google_ads_refresh_token.py): generate a refresh token from an installed-app OAuth client JSON.
 
 ## Observability
 
